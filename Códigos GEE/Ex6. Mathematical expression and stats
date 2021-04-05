@@ -1,0 +1,83 @@
+// Example 6 – MATHEMATICAL EXPRESSIONS AND STATISTICS 
+// More info at: https://developers.google.com/earth-engine/image_math
+// More info at: http://landsat.usgs.gov/Landsat8_Using_Product.php
+// More info at: https://semiautomaticclassificationmanual-v5.readthedocs.io/en/latest/remote_sensing.html#conversion-to-surface-temperature
+
+// Load a LANDSAT 8 image of the Erta Ale volcano in Ethiopia and print metadata
+var image = ee.Image('LANDSAT/LC8_L1T/LC81680502016024LGN00');
+print(image);
+
+// Get metadata properties from the image and store them in a set of variables
+var ML = ee.Number(image.get('RADIANCE_MULT_BAND_10')); // ML = 0.0003342  
+var AL = ee.Number(image.get('RADIANCE_ADD_BAND_10'));  // AL = 0.1
+var K1 = ee.Number(image.get('K1_CONSTANT_BAND_10'));   // K1 = 774.8853
+var K2 = ee.Number(image.get('K2_CONSTANT_BAND_10'));   // K2 = 1321.0789
+var pixelSize = ee.Number(image.get('GRID_CELL_SIZE_THERMAL')); // pixelSize = 30 m
+
+// Compute top-of-atmosphere (TOA) spectral radiance based on 'Band 10' (TIRS 1) using an expression
+var radiance = image.expression(
+    'ML * B10 + AL', {
+        'ML' : ML,
+        'AL' : AL,
+        'B10': image.select('B10')
+});
+
+// Convert TOA spectral radiance to 'TOA / at-satellite' brightness temperature (°C)
+var TOA_temperature = radiance.expression(
+    '(K2 / log((K1 / L) + 1)) - 273.15', {
+        'K2': K2,
+        'K1': K1,
+        'L' : radiance
+});
+
+// Estimate land surface (LS) temperature (°C)
+// More info at: https://semiautomaticclassificationmanual-v5.readthedocs.io/en/latest/thematic_tutorial_temperature.html#id33
+// More info at: https://semiautomaticclassificationmanual-v5.readthedocs.io/en/latest/remote_sensing.html#conversion-to-surface-temperature
+// More info at: https://www.engineeringtoolbox.com/emissivity-coefficients-d_447.html
+var LS_temperature = TOA_temperature.expression(
+    '( (T + 273.15) / (1 + (L * (T + 273.15) / c2) * log(e)) ) - 273.15', {
+        'T' : TOA_temperature,
+        'L' : 10.8,  // wavelength of emitted radiance of Landsat 8 band 10
+        'c2': 14388, // constant term
+        'e' : 0.72   // emissivity coefficient of basalt at 300K
+});
+
+// Display computed LS temperature as a new map layer
+var palette = ['000000', '0000FF', '00FF00', 'FF0000'];
+Map.setCenter(40.66, 13.60, 15);
+Map.setOptions('SATELLITE');
+Map.addLayer(image, {bands: ['B4','B3','B2'], min: 0, max: 25000}, 'true color image', false);
+Map.addLayer(LS_temperature, {min: 40, max: 120, palette: palette}, 'LS temperature (°C)', false);
+
+// Create a categorical map of temperature classes based on the LS temperature image
+// Define arbitrary thresholds on the LS temperature
+var temperatureClasses = LS_temperature.gte(70)    // +1
+                    .add(LS_temperature.gte(80))   // +1
+                    .add(LS_temperature.gte(100)); // +1
+
+// Mask the temperature class #0 (black)
+temperatureClasses = temperatureClasses.updateMask(temperatureClasses.neq(0));
+
+// Display temperature classes as a new map layer
+Map.addLayer(temperatureClasses, {min: 0, max: 3, palette: palette}, 'LS temperature classes', true);
+
+// Create a mask layer highlighting the LS temperature anomaly (class #3 - red)
+var LS_temperatureAnomaly = LS_temperature.updateMask(temperatureClasses.eq(3));
+Map.addLayer(LS_temperatureAnomaly, {min: 40, max: 120, palette: palette}, 'LS temperature anomaly (°C)', false);
+
+// Compute statistics of the LS temperature anomaly
+var meanTemperature = LS_temperatureAnomaly.reduceRegion( {
+    reducer: ee.Reducer.mean(),
+    scale: pixelSize,
+    maxPixels: 1e8
+});
+
+var stdDevTemperature = LS_temperatureAnomaly.reduceRegion( {
+    reducer: ee.Reducer.stdDev(),
+    scale: pixelSize,
+    maxPixels: 1e8
+});
+
+// Display LS temperature statistics (°C)
+print('mean temperature (°C):', meanTemperature.get('constant'));
+print('temperature standard deviation (°C):', stdDevTemperature.get('constant'));

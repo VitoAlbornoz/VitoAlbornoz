@@ -1,0 +1,80 @@
+// Example 8 – SUPERVISED CLASSIFICATION 
+// More info at: https://developers.google.com/earth-engine/classification
+
+// Load a LANDSAT 8 image over a portion of Southern California, USA
+var image = ee.Image('LANDSAT/LC08/C01/T1_TOA/LC08_040037_20131114');
+print(image);
+
+// Define spectral bands to be used for supervised classification
+var bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B10', 'B11'];
+image = image.select(bands);
+print(image);
+
+/* IMPORTANT NOTE:
+On LANDSAT 8 images, Band 12 (a data quality assessment band) is not useful for classification purposes.
+Band 8 (panchromatic) is not used here as well because it has different spatial resolution (15 m), and
+more importantly, its spectral information is redundant (its content overlaps with B2, B3 and B4).
+*/
+
+// Define geometries for the training data of 4 land cover classes: water, vegetation, bare ground, and urban
+var geometryWater = ee.Geometry.MultiPoint(
+        [[-117.5, 33.25],
+         [-117.49, 33.23],
+         [-117.14, 32.66],
+         [-117.35, 33.66],
+         [-117.34, 33.66]]);
+
+var geometryVegetation = ee.Geometry.Rectangle(-116.49, 32.81, -116.41, 32.78);
+
+var geometryBareGround = ee.Geometry.Rectangle(-116.28, 33.25, -116.20, 33.22);
+
+var geometryUrban = ee.Geometry.Polygon(
+        [[[-117.17, 32.71],
+          [-117.13, 32.69],
+          [-117.11, 32.72]]]);
+
+// Generate a feature collection from the geometries created for each land cover class
+var featureCollection = ee.FeatureCollection([
+  ee.Feature(geometryWater, {name: 'water', class: 0}),
+  ee.Feature(geometryVegetation, {name: 'vegetation', class: 1}),
+  ee.Feature(geometryBareGround, {name: 'bare ground', class: 2}),
+  ee.Feature(geometryUrban, {name: 'urban', class: 3})
+]);
+
+// Make the training dataset
+var training = image.sampleRegions({
+  collection: featureCollection, 
+  properties: ['class'],
+  scale: 150
+});
+print(training);
+
+// Create a Random Forest (RF) classifier with custom parameters
+var classifierRF = ee.Classifier.randomForest({
+  numberOfTrees: 10
+});
+
+// Train the classifier
+var trainedRF  = classifierRF.train(training, 'class', bands);
+
+// Classify the image using the trained classifier
+var classesRF  = image.classify(trainedRF);
+
+// Create a palette to display the land cover maps
+var palette = ['blue', 'green', 'yellow', 'gray'];
+
+// Display the classification result and the input image
+Map.centerObject(image, 7);
+Map.addLayer(image, {bands: ['B4', 'B3', 'B2'], max: 0.5, gamma: 1.5}, 'true color image', true);
+Map.addLayer(classesRF, {min: 0, max: 3, palette: palette}, 'RF classification', false);
+
+// Display geometries with the training dataset
+Map.addLayer(geometryWater, {color: '0800FF'}, 'water', false);
+Map.addLayer(geometryVegetation, {color: '16B200'}, 'vegetation', false);
+Map.addLayer(geometryBareGround, {color: 'F0FF00'}, 'bare ground', false);
+Map.addLayer(geometryUrban, {color: 'BEBEBE'}, 'urban', false);
+
+// Get the confusion matrices representing resubstitution accuracy for the classification
+var trainAccuracyRF = trainedRF.confusionMatrix();
+print('RF resubstitution error matrix: ', trainAccuracyRF);
+print('RF training overall accuracy: ', trainAccuracyRF.accuracy());

@@ -1,0 +1,37 @@
+// Example 9 – EXPORTING FILES TO GOOGLE DRIVE 
+
+// Load a SENTINEL-2 image in New Zealand Northern Island 
+var image = ee.Image('COPERNICUS/S2/20170603T222541_20170603T222539_T60HUC');
+
+// Compute NDVI and add it as a new layer
+image = image.addBands(image.normalizedDifference(['B8','B4']).rename('NDVI'));
+
+// Print image metadata
+print(image);
+
+// Define true color visualization parameters
+var visualParRGB = {
+    bands: ['B4', 'B3', 'B2'],
+    min: 0,
+    max: 3000
+};
+
+// Define NDVI visualization parameters
+var visualParNDVI = {
+    bands: 'NDVI',
+    min: 0.0,
+    max: 1.0
+};
+
+// Center map on the image and display results
+Map.centerObject(image, 8);
+Map.addLayer(image, visualParRGB, 'true color composite');
+Map.addLayer(image, visualParNDVI, 'NDVI');
+
+// Define an AOI (area of interest) geometry and display it
+var AOI = ee.Geometry.Rectangle(175.1, -38.2, 175.4, -38.45);
+Map.addLayer(ee.Image().paint(AOI, 0, 2), {}, 'AOI', true);
+
+// Export a subset of the true color image and the NDVI image based on the AOI region
+Export.image.toDrive(image.visualize(visualParRGB), 'ExportedTrueColor', 'EarthEngine', 'trueColor', null, AOI, 10);
+Export.image.toDrive(image.select('NDVI'), 'ExportedNDVI', 'EarthEngine', 'NDVI', null, AOI, 10);

@@ -1,0 +1,65 @@
+// Example 7 – UNSUPERVISED CLASSIFICATION 
+// More info at: https://developers.google.com/earth-engine/clustering
+
+/* IMPORTANT NOTE:
+Before performing a classification, it is advised to select an appropriate 'scale' or 'resolution' 
+for the problem. Classifying an extensive image mosaic (e.g. a continent or the whole planet) at
+fine spatial resolution (e.g. 30 m) using all spectral bands is a very compute-intensive task 
+(for both unsupervised and supervised classifiers). Therefore, we recommend using coarser 
+spatial resolutions when dealing with large-scale studies. For small-scale studies
+(e.g. a few image tiles), it is OK to use the native spatial resolution of the input data.
+In this example, we perform a planet scale classification.
+*/
+
+// Set map type, map view, and zoom factor
+Map.setCenter(-4, 40, 5);
+
+// Define the spatial resolution of the classification process based on the map view zoom factor
+var resolution = Map.getScale();
+// Print the spatial resolution (in meters) of the classified image
+print('pixel size is ' + resolution + ' m')
+
+// Load a pre-computed LANDSAT 7 1-year composite image
+var composite = ee.Image('LE7_TOA_1YEAR/2001');
+print(composite)
+
+// Load a land mask based on SRTM DEM
+var landMask = ee.Image('CGIAR/SRTM90_V4').mask();
+
+// Update composite using the land mask
+var composite = composite.updateMask(landMask);
+
+// Define a region in the Iberian Peninsula to generate a sample of the composite image
+var region = ee.Geometry.Rectangle(-8, 43, -1, 38);
+
+// Make the training dataset
+var training = composite.sample({
+    region: region,
+    scale: resolution,
+    numPixels: 5000
+});
+
+// Define the number of clusters
+var numClusters = 8;
+
+// Instantiate the clusterer (k-means algorithm) and train it
+var clusterer = ee.Clusterer.wekaKMeans(numClusters).train(training);
+
+// Classify the composite image using the trained clusterer
+var classes = composite.cluster(clusterer).reproject(composite.projection(), null, resolution);
+print(classes)
+
+// Define visualization parameters for the composite image
+var visualPar = {
+    bands: ['B5', 'B4', 'B3'],
+    min: 0,
+    max: 150
+};
+
+// Display the composite image and the classes with random colors
+Map.addLayer(composite, visualPar, 'false color composite', false);
+Map.addLayer(classes.randomVisualizer(), {}, 'classification', false);
+
+// Display the sample region
+//Map.addLayer(ee.Image().paint(region, 0, 2), {}, 'region', true);
+Map.addLayer(region, {}, 'region', true);

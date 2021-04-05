@@ -1,0 +1,42 @@
+// Example 2 – FILTERING AN IMAGE COLLECTION
+// More info at: https://developers.google.com/earth-engine/getstarted
+
+// Load a LANDSAT 8 image collection 
+var collection = ee.ImageCollection('LANDSAT/LC08/C01/T1');
+
+// Create a point object in Lausanne
+var point = ee.Geometry.Point(6.63, 46.52);
+
+// Define start and end dates
+var start  = ee.Date('2015-06-01');
+var finish = ee.Date('2015-09-01');
+
+// Filter LANDSAT 8 collection using point object and dates
+var filteredCollection = collection
+    .filterBounds(point)
+    .filterDate(start, finish);
+
+// Get the images with the lowest and highest CLOUD_COVER scores
+var bestImage = filteredCollection.sort('CLOUD_COVER', true).first();
+print(bestImage);
+var worstImage = filteredCollection.sort('CLOUD_COVER', false).first();
+print(worstImage);
+
+/*
+Info: to check the CLOUD_COVER scores in the metadata properties follow these steps:
+1) go to the Console output 
+2) left click on the printed image object
+3) left click on 'properties'
+*/
+
+// Define visualization parameters
+var visualPar = {
+    bands: ['B4', 'B3', 'B2'],
+    min: 0,
+    max: 20000
+};
+
+// Center map on the images and display them in true color
+Map.centerObject(point, 12);
+Map.addLayer(bestImage, visualPar, 'best image', true);
+Map.addLayer(worstImage, visualPar, 'worst image', false);

@@ -1,0 +1,44 @@
+// Example 3 – REDUCING AN IMAGE COLLECTION
+
+// Create a point object in Easter Island
+var point = ee.Geometry.Point([-109.34, -27.11]); 
+
+// Filter the LANDSAT 8 collection using the point object and dates 
+var imageCollection = ee.ImageCollection('LANDSAT/LC08/C01/T1')
+    .filterBounds(point)
+    //.filterDate('2012', '2019');
+
+// Define a temporal filter based on summer days (Southern Hemisphere)
+var summer = ee.Filter.dayOfYear(330, 60);
+print(summer);
+
+// Filter the image collection based on the seasonal criterion
+var imageCollectionSummer = imageCollection.filter(summer);
+print(imageCollectionSummer);
+
+// Store the images taken during summer on a list
+var summerImages = imageCollectionSummer.toList(imageCollectionSummer.size());
+var listLength = summerImages.size().getInfo();
+
+// Add each image within the list as a new layer
+for (var i = 0; i < listLength; i++) {
+    Map.addLayer(ee.Image(summerImages.get(i)), 
+    {bands: ['B4','B3','B2'], min: 0, max: 30000}, 
+    'image '+i, false);
+}
+
+// Define a set of percentiles for reduction
+var reducer = ee.Reducer.percentile([0, 25, 50]);
+print(reducer);
+var reducedImage = imageCollectionSummer.reduce(reducer);
+
+// Add reduced images as new layers
+Map.addLayer(reducedImage, {bands: ['B4_p0', 'B3_p0', 'B2_p0'],
+             min: 0, max: 30000}, 'p0 (min)', true);
+Map.addLayer(reducedImage, {bands: ['B4_p25', 'B3_p25', 'B2_p25'], 
+             min: 0, max: 30000}, 'p25 (Q1)', true);
+Map.addLayer(reducedImage, {bands: ['B4_p50', 'B3_p50', 'B2_p50'], 
+             min: 0, max: 30000}, 'p50 (median)', true);
+
+// Center map on the point object
+Map.centerObject(point, 10);

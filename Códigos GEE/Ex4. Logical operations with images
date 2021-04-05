@@ -1,0 +1,39 @@
+// Example 4 – LOGICAL OPERATIONS WITH IMAGES
+
+// Load SRTM DEM 
+var elevation = ee.Image('srtm90_v4');
+
+// Load a MODIS land cover composite and mask ocean waters with SRTM DEM
+var landCover = ee.Image('MODIS/051/MCD12Q1/2012_01_01')
+    .select('Land_Cover_Type_1').updateMask(elevation);
+
+// Display image metadata. Inspect 'properties' -> 'Land_Cover_Type_1_class_names'.
+print(landCover)
+
+// If (1 <= landCover <= 4) and (elevation > 1000) set pixel equal to 1, else 0
+var highForest  = landCover.lte(4).and(landCover.gte(1)).and(elevation.gt(1000));
+
+// If (8 <= landCover <= 9) and (elevation > 1500) set pixel equal to 1, else 0
+var highSavanna = landCover.lte(9).and(landCover.gte(8)).and(elevation.gt(1500));
+
+// If (landCover = 16) and (elevation > 3000) set pixel equal to 1, else 0
+var highBarren  = landCover.eq(16).and(elevation.gt(3000));
+
+// If (landCover = 0) and (elevation > 1000) set pixel equal to 1, else 0
+var highWater   = landCover.eq(0).and(elevation.gt(1000));
+
+// Output layers contain 0s and 1s. Mask them with themselves to get rid of the 0s.
+highForest  = highForest.updateMask(highForest);
+highSavanna = highSavanna.updateMask(highSavanna);
+highBarren  = highBarren.updateMask(highBarren);
+highWater   = highWater.updateMask(highWater);
+
+// Display layers
+Map.setCenter(0.0, 0.0, 3);
+Map.setOptions('SATELLITE');
+Map.addLayer(elevation,   {min: 0, max: 3000}, 'elevation (m)', true);
+Map.addLayer(landCover.randomVisualizer(), {}, 'land cover', false);
+Map.addLayer(highForest,  {palette: '00AA00'}, 'forest above 1000 m', true);
+Map.addLayer(highSavanna, {palette: 'FFFF00'}, 'savanna above 1500 m', true);
+Map.addLayer(highBarren,  {palette: 'AA0000'}, 'barren above 3000 m', true);
+Map.addLayer(highWater,   {palette: '00AAFF'}, 'water above 1000 m', true);

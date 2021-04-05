@@ -1,0 +1,102 @@
+// Example 5 – MATHEMATICAL OPERATIONS WITH IMAGES
+// More info at: https://developers.google.com/earth-engine/getstarted 
+
+// Load two LANDSAT 5 images from San Francisco, 20 years apart
+var image1990 = ee.Image('LT5_L1T_TOA/LT50440341990155XXX03');
+var image2010 = ee.Image('LT5_L1T_TOA/LT50440342010162EDC00');
+print(image1990)
+
+// Get the pixel size from the LANDSAT 5 image metadata
+var pixelSize = ee.Number(image2010.get('GRID_CELL_SIZE_REFLECTIVE')); // pixelSize = 30 m
+
+// Function to compute the NDVI from a LANDSAT 5 image
+var getNDVI_landsat5 = function(image) {
+    return image.normalizedDifference(['B4', 'B3']);
+};
+
+// Another way to compute NDVI from a LANDSAT 5 image
+var getNDVI_landsat5_v2 = function(image) {
+    return image.select('B4').subtract(image.select('B3'))
+          .divide(image.select('B4').add(image.select('B3')));
+};
+
+// Compute the NDVI from both scenes
+var ndvi1990 = getNDVI_landsat5(image1990);
+var ndvi2010 = getNDVI_landsat5(image2010);
+
+// Compute the NDVI difference between the two scenes
+var ndviDiff = ndvi2010.subtract(ndvi1990);
+
+// Create a NDVI change detection map from the NDVI difference image
+// based on an arbitrary threshold of abs(0.3)
+// ndviChange(i) +1 if (ndviDiff(i) >=  0.3)
+var ndviPositiveChange = ndviDiff.gte(0.3);
+// Exclude pixels with 0s
+ndviPositiveChange = ndviPositiveChange.updateMask(ndviPositiveChange.neq(0));
+// ndviChange(i) +1 if (ndviDiff(i) <= -0.3)
+var ndviNegativeChange = ndviDiff.lte(-0.3);
+// Exclude pixels with 0s
+ndviNegativeChange = ndviNegativeChange.updateMask(ndviNegativeChange.neq(0));
+
+// Load a land mask based on SRTM DEM
+var landMask = ee.Image('CGIAR/SRTM90_V4').mask();
+
+// Update NDVI images using the land mask
+ndvi1990           = ndvi1990.updateMask(landMask);
+ndvi2010           = ndvi2010.updateMask(landMask);
+ndviDiff           = ndviDiff.updateMask(landMask);
+ndviPositiveChange = ndviPositiveChange.updateMask(landMask);
+ndviNegativeChange = ndviNegativeChange.updateMask(landMask);
+
+// Define visualization parameters for the NDVI
+var visualPar = {min: -0.8,
+                 max:  0.8 
+};
+
+// Define visualization parameters for the NDVI difference
+var visualParDiff = {min: -0.5,
+                     max:  0.5, 
+                     palette: ['FF0000', 'FFFFFF', '00FF00']
+};
+
+// Display results
+Map.centerObject(ndviDiff, 8);
+Map.setOptions('SATELLITE');
+Map.addLayer(ndvi1990, visualPar, 'NDVI 1990', false);
+Map.addLayer(ndvi2010, visualPar, 'NDVI 2010', false);
+Map.addLayer(ndviDiff, visualParDiff, 'NDVI difference', true);
+Map.addLayer(ndviPositiveChange, {palette: '00FF00'}, 'positive NDVI change', false);
+Map.addLayer(ndviNegativeChange, {palette: 'FF0000'}, 'negative NDVI change', false);
+
+// Compute the area with significant NDVI change
+// Count the number of pixels with positive NDVI change
+var pixelCount = ndviPositiveChange.reduceRegion( {
+    reducer: ee.Reducer.count(),
+    scale: pixelSize,
+    maxPixels: 1e10
+});
+print(pixelCount)
+
+// Display the total number of pixels with positive NDVI change
+pixelCount = ee.Number(pixelCount.get('nd'));
+print('number of pixels with +NDVI change: ', pixelCount)
+
+// Compute the surface area (in km²) with positive NDVI change
+var surfaceArea = (pixelCount.multiply(pixelSize.multiply(pixelSize))).divide(1e6);
+print('surface area (in km²) with +NDVI change is: ', surfaceArea)
+
+/*
+// Count the number of pixels with negative NDVI change
+var pixelCount = ndviNegativeChange.reduceRegion( {
+    reducer: ee.Reducer.count(),
+    scale: pixelSize,
+    maxPixels: 1e10
+});
+
+// Display the total number of pixels with negative NDVI change
+pixelCount = ee.Number(pixelCount.get('nd'));
+print(pixelCount)
+
+// Compute the surface area (in km²) with NDVI change
+var surfaceArea = (pixelCount.multiply(pixelSize.pow(2))).divide(1e6);
+print(surfaceArea)*/
