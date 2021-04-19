@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": 400,
+    "message": "Unable to export to Shapefile. The first 10 characters were not unique for properties: nitrogen_15-30cm_mean, nitrogen_100-200cm_mean",
+    "status": "INVALID_ARGUMENT"
+  }
+}
