@@ -45,64 +45,67 @@ Map
 
 # %%
 # Add Earth Engine dataset
-# Array-based quality mosaic.
+import math
 
-# Returns a mosaic built by sorting each stack of pixels by the first band
-# in descending order, and taking the highest quality pixel.
-def qualityMosaic(bands):
-  # Convert to an array, and declare names for the axes and indices along the
-  # band axis.
-  array = bands.toArray()
-  imageAxis = 0
-  bandAxis = 1
-  qualityIndex = 0
-  valuesIndex = 1
-
-  # Slice the quality and values off the main array, and sort the values by the
-  # quality in descending order.
-  quality = array.arraySlice(bandAxis, qualityIndex, qualityIndex + 1)
-  values = array.arraySlice(bandAxis, valuesIndex)
-  valuesByQuality = values.arraySort(quality.multiply(-1))
-
-  # Get an image where each pixel is the array of band values where the quality
-  # band is greatest. Note that while the array is 2-D, the first axis is
-  # length one.
-  best = valuesByQuality.arraySlice(imageAxis, 0, 1)
-
-  # Project the best 2D array down to a single dimension, and convert it back
-  # to a regular scalar image by naming each position along the axis. Note we
-  # provide the original band names, but slice off the first band since the
-  # quality band is not part of the result. Also note to get at the band names,
-  # we have to do some kind of reduction, but it won't really calculate pixels
-  # if we only access the band names.
-  bandNames = bands.min().bandNames().slice(1)
-  return best.arrayProject([bandAxis]).arrayFlatten([bandNames])
+# Extract MODIS QA information from the "state_1km" QA band
+# and use it to mask out cloudy and deep ocean areas.
+#
+# QA Band information is available at:
+# https:#lpdaac.usgs.gov/products/modis_products_table/mod09ga
+# Table 1: 1-kilometer State QA Descriptions (16-bit)
 
 
-# Load the l7_l1t collection for the year 2000, and make sure the first band
-# is our quality measure, in this case the normalized difference values.
-l7 = ee.ImageCollection('LANDSAT/LE07/C01/T1') \
-    .filterDate('2000-01-01', '2001-01-01')
+#*
+ # Returns an image containing just the specified QA bits.
+ #
+ # Args:
+ #   image - The QA Image to get bits from.
+ #   start - The first bit position, 0-based.
+ #   end   - The last bit position, inclusive.
+ #   name  - A name for the output image.
+ #
+def getQABits(image, start, end, newName):
+    # Compute the bits we need to extract.
+    pattern = 0
+    for i in range(start, end, 1):
+       pattern += math.pow(2, i)
 
-def func_gbp(image):
-  return image.normalizedDifference(['B4', 'B3']).addBands(image)
-
-withNd = l7.map(func_gbp)
-
+    return image.select([0], [newName]) \
+                  .bitwiseAnd(pattern) \
+                  .rightShift(start)
 
 
+# Reference a single MODIS MOD09GA image.
+image = ee.Image('MODIS/006/MOD09GA/2012_10_11')
 
-# Build a mosaic using the NDVI of bands 4 and 3, essentially showing the
-# greenest pixels from the year 2000.
-greenest = qualityMosaic(withNd)
+# Select the QA band
+QA = image.select('state_1km')
 
-# Select out the color bands to visualize. An interesting artifact of this
-# approach is that clouds are greener than water. So all the water is white.
-rgb = greenest.select(['B3', 'B2', 'B1'])
+# Get the cloud_state bits and find cloudy areas.
+cloud = getQABits(QA, 0, 1, 'cloud_state') \
+                    .expression("b(0) == 1 || b(0) == 2")
 
-Map.addLayer(rgb, {'gain': [1.4, 1.4, 1.1]}, 'Greenest')
-Map.setCenter(-90.08789, 16.38339, 11)
+# Get the land_water_flag bits.
+landWaterFlag = getQABits(QA, 3, 5, 'land_water_flag')
 
+# Create a mask that filters out deep ocean and cloudy areas.
+mask = landWaterFlag.neq(7).And(cloud.Not())
+
+# Add a map layer with the deep ocean and clouds areas masked out.
+Map.addLayer(image.updateMask(mask),
+  {
+    'bands': ['sur_refl_b01', 'sur_refl_b04', 'sur_refl_b03'],
+    'min': -100,
+    'max': 2000
+  }, 'MOD09GA 143'
+)
+
+# Add a semi-transparent map layer that displays the clouds.
+Map.addLayer(
+    cloud.updateMask(cloud),
+    {'palette': 'FFFFFF', 'opacity': 0.8},
+    'clouds'
+)
 
 
 # %%
