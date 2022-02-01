@@ -1,7 +1,7 @@
 - 👋 Hi, I’m @VitoAlbornoz
-- 👀 I’m interested in geemaps and environmental science
-- 🌱 I’m currently learning gee
-- 💞️ I’m looking to collaborate on gee
+- 👀 I’m interested in Data science and environmental science
+- 🌱 I’m currently learning Google Earth Engine + Python 
+- 💞️ I’m looking to collaborate on GEE + Python
 - 📫 How to reach me francisco.albornoz@ciep.cl
 
 <!---
